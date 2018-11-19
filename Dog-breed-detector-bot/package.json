@@ -1,0 +1,20 @@
+{
+  "name": "Dog-breed-detector-bot",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "@google-cloud/storage": "^2.3.1",
+    "body-parser": "~1.17.1",
+    "cookie-parser": "~1.4.3",
+    "debug": "~2.6.3",
+    "dotenv": "^6.1.0",
+    "express": "~4.15.2",
+    "jade": "~1.11.0",
+    "morgan": "~1.8.1",
+    "node-fetch": "^1.7.2",
+    "request": "^2.81.0"
+  }
+}
