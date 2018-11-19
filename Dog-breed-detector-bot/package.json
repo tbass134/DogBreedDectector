@@ -3,10 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "start": "node app.js"
+    "start": "node app.js",
+    "prestart": "./node_modules/.bin/sync"
   },
   "dependencies": {
     "@google-cloud/storage": "^2.3.1",
+    "@invisible/deploy": "^1.0.13",
     "body-parser": "~1.17.1",
     "cookie-parser": "~1.4.3",
     "debug": "~2.6.3",

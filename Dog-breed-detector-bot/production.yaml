@@ -1,0 +1,8 @@
+service: default
+runtime: nodejs
+env: flex
+ 
+skip_files:
+ - ^node_modules$
+ - ^ignore$
+ - ^.env$
