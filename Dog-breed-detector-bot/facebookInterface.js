@@ -128,16 +128,19 @@ exports.receivedWebhook = function (req, res) {
                 pageEntry.changes.forEach(function (messagingEvent) {
                     if (messagingEvent.field == "mention") {
                         var message = messagingEvent.value.message.toLowerCase()
-                        if (true) {
-                            exports.getPostContents(messagingEvent.value.post_id)
-                            .then(function (photo_url) {
-                                return predictions.predictBreed(photo_url)
-                            }).then(function (breed_name) {
-                                exports.addCommentAPI(messagingEvent.value.post_id, breed_name)
-                            }).catch(function (error) {
-                                exports.addCommentAPI(messagingEvent.value.post_id, "Sorry, but I'm unable to tell you what dog that is")
-                            })
-                        }
+                        //If any text is sent to the bot, we'll get the image url from the post,
+                        //make a prediction on our Flask API,
+                        //get the breed name,
+                        //and post a comment into that post with the name of the breed dectected
+                        exports.getPostContents(messagingEvent.value.post_id)
+                        .then(function (photo_url) {
+                            return predictions.predictBreed(photo_url)
+                        }).then(function (breed_name) {
+                            exports.addCommentAPI(messagingEvent.value.post_id, breed_name)
+                        }).catch(function (error) {
+                            exports.addCommentAPI(messagingEvent.value.post_id, "Sorry, but I'm unable to tell you what dog that is")
+                        })
+                        
                     }
                     else {
                         console.log('Webhook received unknown messagingEvent: ', messagingEvent);
