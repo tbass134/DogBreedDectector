@@ -314,9 +314,15 @@ Epoch 1/1
 288/288 [==============================] - 4362s 15s/step - loss: 1.0910 - acc: 0.7418 - val_loss: 0.4133 - val_acc: 0.8594
 ```
 
+The fully training model is [here](https://s3.amazonaws.com/dog-breed-dectector-models/2018-11-21_dog_breed_model.h5). To load the model, just use `keras.models.load_model({path to hd5 model})`
+like so:
+```python
+from keras.models import load_model
+model = load_model('2018-11-21_dog_breed_model.h5')
+```
 ### Make predictions
 
-Now that we have a model, we need to use it. We'll write a function that takes an image from the internet, format it to what the model expects(299x299 image) and get the prediction
+Now that we have a model, we need to use it. We'll write a function that takes an image from the internet, format it to what the model expects(299x299 image) and make the prediction using `model.predict()`. This function takes in a image, which is converted into a numpy array, and returns a list of probabilities for each breed. We use `np.argmax()` to find the index of the highest probability from the output of `model.predict()`. To return the name of the breed, we use the `lables.csv` that we used earlier, which contains all the breed names, sort the list, then return the breed name  
 
 ```python
 from keras.models import load_model
@@ -331,15 +337,12 @@ def predict_from_image(img_path):
     img = image.load_img(img_path, target_size=(299, 299))
     img_tensor = image.img_to_array(img)                    # (height, width, channels)
     img_tensor = np.expand_dims(img_tensor, axis=0)         # (1, height, width, channels), add a dimension because the model expects this shape: (batch_size, height, width, channels)
-    img_tensor /= 255.                                      # imshow expects values in the range [0, 1]
-    
-    pred = model.predict(img_tensor)
-    sorted_breeds_list = sorted(selected_breed_list)
-    predicted_class = sorted_breeds_list[np.argmax(pred)]
-    
-    plt.imshow(img_tensor[0])                           
-    plt.axis('off')
-    plt.show()
+    img_tensor /= 255.                                      
+
+    global graph
+    with graph.as_default():
+        pred = model.predict(img_tensor)
+        predicted_class = sorted_breeds_list[np.argmax(pred)]
 
     return predicted_class
 ```
@@ -351,4 +354,123 @@ Nice! its working well.
 
 
 ## Serve the model
-Next, in order to serve this model, we'll need to host it on a server. We'll use the Flask package to make a simple API. It will have 1 route, called `/predict` that will take a path to an image, and return a JSON response of the breed. 
+Next, in order to serve this model, we'll need to host it on a server. We'll use the [Flask](http://flask.pocoo.org) package to make a simple API. It will have 1 route, called `/predict` that will take a path to an image, and return a JSON response with the breed name. The full code for this is on [Github](https://github.com/tbass134/DogBreedDectector/tree/master/Server)
+
+A Flask application is very simple to startup, we first create new instance of Flask and run it
+```python
+app = Flask(__name__)
+
+if __name__ == '__main__':
+    app.run(debug=True, use_reloader=True)
+```
+Next, we'll need to load our training model. We'll also need to include the Dataframe that includes the names of all the breeds. We'll use this in order to get the breed name when the model makes the prediction.
+```python
+# inputs
+num_classes = 120
+im_size = 299
+
+df = pd.read_csv('labels.csv')
+sorted_breeds_list = sorted(list(df.groupby('breed').count().sort_values(by='id', ascending=False).head(num_classes).index))
+
+model = load_model('2018-11-15_dog_breed_model.h5')
+graph = tf.get_default_graph()
+```
+The `num_classes` variable is set the number of breeds we want to use. In this case, we want to use all the breeds. We've downloaded the fully trained model from [here](https://s3.amazonaws.com/dog-breed-dectector-models/2018-11-21_dog_breed_model.h5) and have loaded the model into memory. You'll notice that we created a `graph` variable which is set to `tf.get_default_graph()`, which creates a new [Tensorflow Graph](https://www.tensorflow.org/guide/graphs), which will perform all of our model computations. Next, we'll create our `/predict` route to handle the predictions. It will take a url to an image, save it, convert the image to a numpy array, from the `predict_from_image()` function we created earlier and make the prediction using `model.predict()`
+```python 
+@app.route('/predict', methods=['POST'])
+def predict():
+    try:
+        json = request.json
+
+        image_path = json['image_path']
+        ts = time.gmtime()
+        ts_str = time.strftime("%s", ts)
+        filename = ts_str+".jpg"
+        f = open(filename,'wb')
+        f.write(requests.get(image_path).content)
+        f.close()
+
+        prediction = predict_from_image(filename)
+        os.remove(filename)
+        return jsonify({'prediction': prediction})
+
+    except Exception as e:
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
+```
+To run our server locally, we'll use Gunicorn, which is a Python WSGI HTTP Server for UNIX. You'll need to install the framework via `pip`
+```
+pip install gunicorn
+```
+
+Next, we'll run our app in Terminal by running
+```
+gunicorn app:app
+```
+Thats it! Our sever is up and running. It defaults to our localhost(http://127.0.0.1:8000)
+We can test the API using Postman
+![](images/postman-predict.png)
+
+Our payload is a JSON object with one property called `image_path`, and the output is the name of the breed!
+
+After we've tested our API, we can now deploy. For this application, i'm using [Google App Engine](https://cloud.google.com/appengine/) to deploy our application. Google has a nice quickstart on [how to install and use the gcloud command line utility](https://cloud.google.com/python/getting-started/hello-world)
+
+After you have created a a new project on GCP, downloaded the gcloud command line utility, and initialized, you'll then deploy the application. 
+First, you need to create a `app.yaml` file, which describes an application's deployment configuration.
+The yaml file will look like the following
+
+```
+runtime: python
+env: flex
+entrypoint: gunicorn -b :$PORT main:app
+
+runtime_config:
+  python_version: 3
+```
+Now, we can deploy our application to gcloud using the command `gcloud app deploy`
+After a few minutes, your application will be up and running on `http://YOUR_PROJECT_ID.appspot.com`
+
+## Bulid the Workplace Bot
+
+Our final task is to use this API in our Workplace bot. We won't go over everything on how to build a Workplace Bot, but you can view how the bot is built on [Github](https://github.com/tbass134/DogBreedDectector/tree/master/Dog-breed-detector-bot)
+
+In order to build a Workplace bot, you'll need to have a Workplace admin account. 
+On your Workplace account, go to `Admin Panel` -> `Integrations`, and create a new Integration
+
+![](images/workplace-bot-intergration.jpg)
+Copy the `App ID`, `App Secret` and `Access Token` into your Environment variables in the project.
+Next, you'll need to configure the webhook and point it to your application. For now, we'll use ngrok to access our application when running locally
+![](images/workplace-bot-webhook.jpg)
+
+After you run the bot using `npm start`, you can now start using the application. 
+
+For our bot, we'll allow users to ask the bot a question directly in the comments section of a post that contains an image. This way, we can retreive the image url, which we can send to our Flask API for the prediction. 
+```nodejs
+if (messagingEvent.field == "mention") {
+    var message = messagingEvent.value.message.toLowerCase()
+    //If any text is sent to the bot, we'll get the image url from the post,
+    //make a prediction on our Flask API,
+    //get the breed name,
+    //and post a comment into that post with the name of the breed dectected
+    exports.getPostContents(messagingEvent.value.post_id)
+    .then(function (photo_url) {
+        return predictions.predictBreed(photo_url)
+    }).then(function (breed_name) {
+        exports.addCommentAPI(messagingEvent.value.post_id, breed_name)
+    }).catch(function (error) {
+        exports.addCommentAPI(messagingEvent.value.post_id, "Sorry, but I'm unable to tell you what dog that is")
+    })
+    
+}
+else {
+    console.log('Webhook received unknown messagingEvent: ', messagingEvent);
+}
+```
+The full code for this is [here](https://github.com/tbass134/DogBreedDectector/blob/a299f3c8cb572b49c91638db845d904541d29ec0/Dog-breed-detector-bot/facebookInterface.js#L129)
+
+Now that we can test it on Workplace. 
+![](images/workplace-bot-example.jpg)
+
+
+## Conculusion
+After our very long post, we've shown you how to use build a dog breed classifier using Keras, train our model, expose the trainined model on a server and use this model in a Workplace Bot for Facebook. Learning how to build a machine learning is nice, but its nothing unless you allow others to use it. You need to continue to get feedback from others when they are using your model. It will help u see what is working and what doesnt. This is necessary to build great models. 
+I hope this gives you the knowledge and tools on how to start building your models. I can't wait to know what you come up with!
