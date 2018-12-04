@@ -23,7 +23,7 @@ im_size = 299
 df = pd.read_csv('labels.csv')
 sorted_breeds_list = sorted(list(df.groupby('breed').count().sort_values(by='id', ascending=False).head(num_classes).index))
 
-model = load_model('2018-11-15_dog_breed_model.h5')
+model = load_model('2018-11-21_dog_breed_model.h5')
 graph = tf.get_default_graph()
 
 def predict_from_image(img_path):
